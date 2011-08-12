@@ -1,7 +1,7 @@
 /*
 * $ lightbox_me
-* By: Buck Wilson
-* Version : 2.3
+* By: Buck Wilson ("animate" support by Brian Kennish)
+* Version: 2.4
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,8 +27,40 @@
                 opts = $.extend({}, $.fn.lightbox_me.defaults, options),
                 $overlay = $(),
                 $self = $(this),
-                $iframe = $('<iframe id="foo" style="z-index: ' + (opts.zIndex + 1) + ';border: none; margin: 0; padding: 0; position: absolute; width: 100%; height: 100%; top: 0; left: 0; filter: mask();"/>'),
-                ie6 = ($.browser.msie && $.browser.version < 7);
+                properties = {
+                    left: $self.css('left'),
+                    top: $self.css('top'),
+                    marginLeft: $self.css('marginLeft'),
+                    marginTop: $self.css('marginTop'),
+                    borderTopLeftRadius: $self.css('borderTopLeftRadius'),
+                    MozBorderTopLeftRadius: $self.css('MozBorderTopLeftRadius'),
+                    WebkitBorderTopLeftRadius:
+                            $self.css('WebkitBorderTopLeftRadius'),
+                    borderTopRightRadius: $self.css('borderTopRightRadius'),
+                    MozBorderTopRightRadius:
+                            $self.css('MozBorderTopRightRadius'),
+                    WebkitBorderTopRightRadius:
+                            $self.css('WebkitBorderTopRightRadius'),
+                    borderBottomLeftRadius: $self.css('borderBottomLeftRadius'),
+                    MozBorderBottomLeftRadius:
+                            $self.css('MozBorderBottomLeftRadius'),
+                    WebkitBorderBottomLeftRadius:
+                            $self.css('WebkitBorderBottomLeftRadius'),
+                    borderBottomRightRadius:
+                            $self.css('borderBottomRightRadius'),
+                    MozBorderBottomRightRadius:
+                            $self.css('MozBorderBottomRightRadius'),
+                    WebkitBorderBottomRightRadius:
+                            $self.css('WebkitBorderBottomRightRadius'),
+                    width: $self.width(),
+                    height: $self.height()
+                }, // Look away -- I'm hideous.
+                ie6 = $.browser.msie && $.browser.version < 7,
+                $iframe = $(
+                    '<iframe style="position: absolute; left: 0; top: 0; z-index: '
+                            + (opts.zIndex + 1) +
+                                    '; margin: 0; border: 0; padding: 0; width: 100%; height: 100%; filter: mask()"/>'
+                );
 
             if (opts.showOverlay) {
                 //check if there's an existing overlay, if so, make subequent ones clear
@@ -48,7 +80,8 @@
                 $iframe.attr('src', src);
                 $('body').append($iframe);
             } // iframe shim for ie6, to hide select elements
-            $('body').append($self.hide()).append($overlay);
+
+            $('body').append($overlay).append($self);
 
 
             /*----------------------------------------------------
@@ -67,16 +100,10 @@
             /*----------------------------------------------------
                Animate it in.
             ---------------------------------------------------- */
-               //
+
             if (opts.showOverlay) {
-                $overlay.fadeIn(opts.overlaySpeed, function() {
-                    setSelfPosition();
-                    $self[opts.appearEffect](opts.lightboxSpeed, function() { setOverlayHeight(); setSelfPosition(); opts.onLoad()});
-                });
-            } else {
-                setSelfPosition();
-                $self[opts.appearEffect](opts.lightboxSpeed, function() { opts.onLoad()});
-            }
+                $overlay.fadeIn(opts.overlaySpeed, addModal);
+            } else { addModal(); }
 
             /*----------------------------------------------------
                Hide parent if parent specified (parentLightbox should be jquery reference to any parent lightbox)
@@ -100,8 +127,6 @@
             $self.delegate(opts.closeSelector, "click", function(e) {
                 closeLightbox(); e.preventDefault();
             });
-            $self.bind('close', closeLightbox);
-            $self.bind('reposition', setSelfPosition);
 
             
 
@@ -113,32 +138,64 @@
                Private Functions
             ---------------------------------------------------- */
 
-            /* Remove or hide all elements */
-            function closeLightbox() {
-                var s = $self[0].style;
-                if (opts.destroyOnClose) {
-                    $self.add($overlay).remove();
+            /* Opens the modal using the optional effect. */
+            function addModal() {
+                if (opts.appearEffect == 'animate') {
+                    // TODO: Reuse the formatting from "setSelfPosition".
+                    $self.css('zIndex', opts.zIndex + 3);
+                    opts.modalCSS.left =
+                            ($(window).width() - opts.modalCSS.width) / 2;
+                    opts.modalCSS.top =
+                            ($(window).height() - opts.modalCSS.height) / 2;
+                    opts.modalCSS.marginLeft = -$self.outerWidth() / 2;
+                    opts.modalCSS.marginTop = -$self.outerHeight() / 2;
+                    $self.animate(
+                        opts.modalCSS, opts.lightboxSpeed, opts.onLoad
+                    );
                 } else {
-                    $self.add($overlay).hide();
+                    setSelfPosition();
+                    $self[opts.appearEffect](opts.lightboxSpeed, opts.onLoad);
+                }
+            }
+
+            /* Fades the overlay then unbinds events. */
+            function completeClose() {
+                if (opts.destroyOnClose) { $self.remove(); } else {
+                    $self.hide();
+                    $self.undelegate(opts.closeSelector, 'click');
                 }
 
-                //show the hidden parent lightbox
-                if (opts.parentLightbox) {
-                    opts.parentLightbox.fadeIn(200);
+                if (ie6) { $self[0].style.removeExpression('top'); } // WTF?
+
+                $overlay.fadeOut(opts.overlayDisappearSpeed, function() {
+                    opts.onClose(); // Any foreground animation should go first.
+
+                    if (opts.parentLightbox) {
+                        opts.parentLightbox.fadeIn('fast');
+                    }
+
+                    opts.destroyOnClose ? $overlay.remove() : $overlay.hide();
+
+                    if (ie6) { $iframe.remove(); }
+
+                    $(document).unbind('keyup', observeKeyPress);
+                    $(window).unbind('scroll', setSelfPosition);
+                    $(window).unbind('resize', setSelfPosition);
+                    $(window).unbind('resize', setOverlayHeight);
+                });
+            }
+
+            /* Removes the lightbox using the optional effect. */
+            function closeLightbox() {
+                if (opts.disappearEffect == 'animate') {
+                    $self.animate(
+                        properties, opts.lightboxDisappearSpeed, completeClose
+                    );
+                } else {
+                    $self[opts.disappearEffect](
+                        opts.lightboxDisappearSpeed, completeClose
+                    );
                 }
-
-                $iframe.remove();
-                
-				// clean up events.
-                $self.undelegate(opts.closeSelector, "click");
-
-                $(window).unbind('reposition', setOverlayHeight);
-                $(window).unbind('reposition', setSelfPosition);
-                $(window).unbind('scroll', setSelfPosition);
-                $(document).unbind('keyup', observeKeyPress);
-                if (ie6)
-                    s.removeExpression('top');
-                opts.onClose();
             }
 
 
@@ -222,31 +279,31 @@
 
     $.fn.lightbox_me.defaults = {
 
-        // animation
-        appearEffect: "fadeIn",
-        appearEase: "",
+        // Animation:
+        appearEffect: 'fadeIn',
         overlaySpeed: 250,
         lightboxSpeed: 300,
+        disappearEffect: 'fadeOut',
+        overlayDisappearSpeed: 250,
+        lightboxDisappearSpeed: 300,
 
-        // close
-        closeSelector: ".close",
-        closeClick: true,
-        closeEsc: true,
-
-        // behavior
-        destroyOnClose: false,
-        showOverlay: true,
-        parentLightbox: false,
-
-        // callbacks
+        // Callbacks:
         onLoad: function() {},
         onClose: function() {},
 
-        // style
-        classPrefix: 'lb',
+        // Appearance:
         zIndex: 999,
+        classPrefix: 'lb',
+        overlayCSS: {background: 'black', opacity: .3},
         centered: false,
         modalCSS: {top: '40px'},
-        overlayCSS: {background: 'black', opacity: .3}
-    }
+
+        // Behavior:
+        parentLightbox: false,
+        showOverlay: true,
+        closeEsc: true,
+        closeClick: true,
+        closeSelector: '.close',
+        destroyOnClose: false
+    };
 })(jQuery);
