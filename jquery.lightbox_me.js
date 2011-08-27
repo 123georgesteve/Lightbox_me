@@ -149,7 +149,12 @@
                             ($(window).height() - opts.modalCSS.height) / 2;
                     opts.modalCSS.marginLeft = -$self.outerWidth() / 2;
                     opts.modalCSS.marginTop = -$self.outerHeight() / 2;
-                    $self.show();
+
+                    $self.css('visibility', function(index, value) {
+                        return value == 'visible' ? ($self.show(), value) :
+                                'visible';
+                    });
+
                     $self.animate(
                         opts.modalCSS, opts.lightboxSpeed, opts.onLoad
                     );
